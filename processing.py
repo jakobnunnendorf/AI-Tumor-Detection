@@ -260,9 +260,9 @@ log_file_name = f'brain_tumor_detection_cnn_{int(time.time())}'
 tensorboard = TensorBoard(log_dir=f'logs/{log_file_name}')
 # checkpoint
 # unique file name that will include the epoch and the validation (development) accuracy
-filepath="cnn-parameters-improvement-{epoch:02d}-{val_acc:.2f}"
+filepath="cnn-parameters-improvement-{epoch:02d}-{val_accuracy:.2f}.keras"
 # save the model with the best validation (development) accuracy till now
-checkpoint = ModelCheckpoint("models/{}.keras".format(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max'))
+checkpoint = ModelCheckpoint("models/{}.keras".format(filepath, monitor='val_accuracy', verbose=1, save_best_only=True, mode='max'))
 
 start_time = time.time()
 

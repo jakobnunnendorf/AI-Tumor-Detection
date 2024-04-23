@@ -68,7 +68,10 @@ def crop_brain_contour(image, plot=False):
 ex_img = cv2.imread('yes/Y1.jpg')
 ex_new_img = crop_brain_contour(ex_img, True)
 
+print("After the y1")
+
 def load_data(dir_list, image_size):
+    print(dir_list, image_size)
     """
     Read images, resize and normalize them. 
     Arguments:
@@ -84,9 +87,13 @@ def load_data(dir_list, image_size):
     image_width, image_height = image_size
     
     for directory in dir_list:
+        print(directory)
         for filename in listdir(directory):
+            print(filename)
             # load the image
-            image = cv2.imread(directory + '\\' + filename)
+            path = directory + '/' + filename
+            print(path)
+            image = cv2.imread(path)
             # crop the brain and ignore the unnecessary rest part of the image
             image = crop_brain_contour(image, plot=False)
             # resize image
@@ -114,17 +121,18 @@ def load_data(dir_list, image_size):
     
     return X, y
 
+print("Line 120")
 
-augmented_path = 'augmented data/'
+augmented_path = ''
 
 # augmented data (yes and no) contains both the original and the new generated examples
 augmented_yes = augmented_path + 'yes' 
 augmented_no = augmented_path + 'no'
 
 IMG_WIDTH, IMG_HEIGHT = (240, 240)
-
+print("line 129")
 X, y = load_data([augmented_yes, augmented_no], (IMG_WIDTH, IMG_HEIGHT))
-
+print("line 131")
 def plot_sample_images(X, y, n=50):
     """
     Plots n sample images for both values of y (labels).
@@ -160,3 +168,106 @@ def plot_sample_images(X, y, n=50):
         plt.show()
 
 plot_sample_images(X, y)
+
+def split_data(X, y, test_size=0.2):
+       
+    """
+    Splits data into training, development and test sets.
+    Arguments:
+        X: A numpy array with shape = (#_examples, image_width, image_height, #_channels)
+        y: A numpy array with shape = (#_examples, 1)
+    Returns:
+        X_train: A numpy array with shape = (#_train_examples, image_width, image_height, #_channels)
+        y_train: A numpy array with shape = (#_train_examples, 1)
+        X_val: A numpy array with shape = (#_val_examples, image_width, image_height, #_channels)
+        y_val: A numpy array with shape = (#_val_examples, 1)
+        X_test: A numpy array with shape = (#_test_examples, image_width, image_height, #_channels)
+        y_test: A numpy array with shape = (#_test_examples, 1)
+    """
+    
+    X_train, X_test_val, y_train, y_test_val = train_test_split(X, y, test_size=test_size)
+    X_test, X_val, y_test, y_val = train_test_split(X_test_val, y_test_val, test_size=0.5)
+    
+    return X_train, y_train, X_val, y_val, X_test, y_test
+
+X_train, y_train, X_val, y_val, X_test, y_test = split_data(X, y, test_size=0.3)
+
+print ("number of training examples = " + str(X_train.shape[0]))
+print ("number of development examples = " + str(X_val.shape[0]))
+print ("number of test examples = " + str(X_test.shape[0]))
+print ("X_train shape: " + str(X_train.shape))
+print ("Y_train shape: " + str(y_train.shape))
+print ("X_val (dev) shape: " + str(X_val.shape))
+print ("Y_val (dev) shape: " + str(y_val.shape))
+print ("X_test shape: " + str(X_test.shape))
+print ("Y_test shape: " + str(y_test.shape))
+
+# Nicely formatted time string
+def hms_string(sec_elapsed):
+    h = int(sec_elapsed / (60 * 60))
+    m = int((sec_elapsed % (60 * 60)) / 60)
+    s = sec_elapsed % 60
+    return f"{h}:{m}:{round(s,1)}"
+
+def compute_f1_score(y_true, prob):
+    # convert the vector of probabilities to a target vector
+    y_pred = np.where(prob > 0.5, 1, 0)
+    
+    score = f1_score(y_true, y_pred)
+    
+    return score
+
+def build_model(input_shape):
+    """
+    Arugments:
+        input_shape: A tuple representing the shape of the input of the model. shape=(image_width, image_height, #_channels)
+    Returns:
+        model: A Model object.
+    """
+    # Define the input placeholder as a tensor with shape input_shape. 
+    X_input = Input(input_shape) # shape=(?, 240, 240, 3)
+    
+    # Zero-Padding: pads the border of X_input with zeroes
+    X = ZeroPadding2D((2, 2))(X_input) # shape=(?, 244, 244, 3)
+    
+    # CONV -> BN -> RELU Block applied to X
+    X = Conv2D(32, (7, 7), strides = (1, 1), name = 'conv0')(X)
+    X = BatchNormalization(axis = 3, name = 'bn0')(X)
+    X = Activation('relu')(X) # shape=(?, 238, 238, 32)
+    
+    # MAXPOOL
+    X = MaxPooling2D((4, 4), name='max_pool0')(X) # shape=(?, 59, 59, 32) 
+    
+    # MAXPOOL
+    X = MaxPooling2D((4, 4), name='max_pool1')(X) # shape=(?, 14, 14, 32)
+    
+    # FLATTEN X 
+    X = Flatten()(X) # shape=(?, 6272)
+    # FULLYCONNECTED
+    X = Dense(1, activation='sigmoid', name='fc')(X) # shape=(?, 1)
+    
+    # Create model. This creates your Keras model instance, you'll use this instance to train/test the model.
+    model = Model(inputs = X_input, outputs = X, name='BrainDetectionModel')
+    
+    return model
+
+IMG_SHAPE = (IMG_WIDTH, IMG_HEIGHT, 3)
+model = build_model(IMG_SHAPE)
+model.summary()
+model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+# tensorboard
+log_file_name = f'brain_tumor_detection_cnn_{int(time.time())}'
+tensorboard = TensorBoard(log_dir=f'logs/{log_file_name}')
+# checkpoint
+# unique file name that will include the epoch and the validation (development) accuracy
+filepath="cnn-parameters-improvement-{epoch:02d}-{val_acc:.2f}"
+# save the model with the best validation (development) accuracy till now
+checkpoint = ModelCheckpoint("models/{}.keras".format(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max'))
+
+start_time = time.time()
+
+model.fit(x=X_train, y=y_train, batch_size=32, epochs=10, validation_data=(X_val, y_val), callbacks=[tensorboard, checkpoint])
+
+end_time = time.time()
+execution_time = (end_time - start_time)
+print(f"Elapsed time: {hms_string(execution_time)}")

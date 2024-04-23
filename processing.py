@@ -272,3 +272,33 @@ model.fit(x=X_train, y=y_train, batch_size=32, epochs=10, validation_data=(X_val
 end_time = time.time()
 execution_time = (end_time - start_time)
 print(f"Elapsed time: {hms_string(execution_time)}")
+
+history = model.history.history
+
+for key in history.keys():
+    print(key)
+
+def plot_metrics(history):
+    
+    train_loss = history['loss']
+    val_loss = history['val_loss']
+    train_acc = history['accuracy']
+    val_acc = history['val_accuracy']
+    
+    # Loss
+    plt.figure()
+    plt.plot(train_loss, label='Training Loss')
+    plt.plot(val_loss, label='Validation Loss')
+    plt.title('Loss')
+    plt.legend()
+    plt.show()
+    
+    # Accuracy
+    plt.figure()
+    plt.plot(train_acc, label='Training Accuracy')
+    plt.plot(val_acc, label='Validation Accuracy')
+    plt.title('Accuracy')
+    plt.legend()
+    plt.show()
+
+plot_metrics(history) 

@@ -1,6 +1,4 @@
-
-import tensorflow as tf
-from tensorflow.keras.layers import Conv2D, Input, ZeroPadding2D, BatchNormalization, Activation, MaxPooling2D, Flatten, Dense
+from tensorflow.keras.layers import Dense, Input, Conv2D, ZeroPadding2D, MaxPooling2D, BatchNormalization, Activation, Flatten
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
 from sklearn.model_selection import train_test_split
@@ -13,11 +11,12 @@ import matplotlib.pyplot as plt
 import time
 from os import listdir
 
-def crop_brain_contour(image, plot=False):
+width, height = (240, 240)
+def crop(image, plot=False):
     """Crop the brain contour from a MRI image."""
-    # Convert image to grayscale, apply Gaussian blur
+    # Convert to grayscale and blur
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
     # Threshold image, then erode/dilate to clean up
     thresh = cv2.threshold(gray, 45, 255, cv2.THRESH_BINARY)[1]
@@ -25,18 +24,18 @@ def crop_brain_contour(image, plot=False):
     thresh = cv2.dilate(thresh, None, iterations=2)
 
     # Find contours, get largest one
-    cnts = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cnts = imutils.grab_contours(cnts)
-    c = max(cnts, key=cv2.contourArea)
+    contours = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = imutils.grab_contours(contours)
+    contour = max(contours, key=cv2.contourArea)
 
     # Find extreme points
-    extLeft = tuple(c[c[:, :, 0].argmin()][0])
-    extRight = tuple(c[c[:, :, 0].argmax()][0])
-    extTop = tuple(c[c[:, :, 1].argmin()][0])
-    extBot = tuple(c[c[:, :, 1].argmax()][0])
+    left = tuple(contour[contour[:, :, 0].argmin()][0])
+    right = tuple(contour[contour[:, :, 0].argmax()][0])
+    top = tuple(contour[contour[:, :, 1].argmin()][0])
+    bottom = tuple(contour[contour[:, :, 1].argmax()][0])
 
     # Crop image using the four extreme points
-    crop = image[extTop[1]:extBot[1], extLeft[0]:extRight[0]]  
+    cropped = image[top[1]:bottom[1], left[0]:right[0]]  
 
     if plot:
         plt.figure(figsize=(10, 8))
@@ -46,22 +45,22 @@ def crop_brain_contour(image, plot=False):
         plt.title('Original Image')
 
         plt.subplot(1, 2, 2)
-        plt.imshow(crop)
+        plt.imshow(cropped)
         plt.axis('off')
         plt.title('Cropped Image')
         plt.show()
 
-    return crop
+    return cropped
 
 
 ex_img = cv2.imread('yes/Y1.jpg')
-ex_new_img = crop_brain_contour(ex_img, True)
+ex_new_img = crop(ex_img, True)
 
 print("After the y1")
 
 
-def load_data(dir_list, image_size):
-    print(dir_list, image_size)
+def load_data(directories, image_size):
+    print(directories, image_size)
  
     # load all images in a directory
         
@@ -69,16 +68,14 @@ def load_data(dir_list, image_size):
     y = [] # y: A numpy array with shape = (#_examples, 1)
     image_width, image_height = image_size
     
-    for directory in dir_list:
+    for directory in directories:
         print(directory)
         for filename in listdir(directory):
-            print(filename)
             # load the image
             path = directory + '/' + filename
-            print(path)
             image = cv2.imread(path)
             # crop the brain and ignore the unnecessary rest part of the image
-            image = crop_brain_contour(image, plot=False)
+            image = crop(image, plot=False)
             # resize image
             image = cv2.resize(image, dsize=(image_width, image_height), interpolation=cv2.INTER_CUBIC)
             # normalize values
@@ -104,15 +101,8 @@ def load_data(dir_list, image_size):
     
     return x, y
 
-print("Line 120")
 
-
-# augmented data (yes and no) contains both the original and the new generated examples
-augmented_yes =  'yes' 
-augmented_no =  'no'
-
-IMG_WIDTH, IMG_HEIGHT = (240, 240)
-x, y = load_data([augmented_yes, augmented_no], (IMG_WIDTH, IMG_HEIGHT))
+x, y = load_data(['yes', 'no'], (width, height))
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -120,10 +110,6 @@ import matplotlib.pyplot as plt
 def plot_sample_images(x, y, n=50):
     """
     Plots n sample images for both values of y (labels).
-    
-    Arguments:
-        x: A numpy array with shape = (#_examples, image_width, image_height, #_channels)
-        y: A numpy array with shape = (#_examples, 1)
         n: Number of images to plot for each class.
     """
     for label in [0, 1]:
@@ -217,8 +203,8 @@ def build_model(input_shape):
     
     return model
 
-IMG_SHAPE = (IMG_WIDTH, IMG_HEIGHT, 3)
-model = build_model(IMG_SHAPE)
+shape = (width, height, 3)
+model = build_model(shape)
 model.summary()
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 # tensorboard
@@ -237,14 +223,12 @@ model.fit(x=x_train, y=y_train, batch_size=32, epochs=10, validation_data=(x_val
 
 end_time = time.time()
 execution_time = (end_time - start_time)
-print(f"Elapsed time: {execution_time}")
+print(f"Elapsed time: {format_elapsed_time(execution_time)}")
 
 history = model.history.history
 
-for key in history.keys():
-    print(key)
 
-def plot_metrics(history):
+def trainingHistory(history):
     
     train_loss = history['loss']
     val_loss = history['val_loss']
@@ -267,4 +251,43 @@ def plot_metrics(history):
     plt.legend()
     plt.show()
 
-plot_metrics(history) 
+trainingHistory(history) 
+
+
+best_model = load_model(filepath='models/cnn-parameters-improvement-26-0.76.keras')
+best_model.metrics_names
+loss, acc = best_model.evaluate(x=x_test, y=y_test)
+
+print (f"Test Loss = {loss}")
+print (f"Test Accuracy = {acc}")
+
+y_test_prob = best_model.predict(x_test)
+f1score = compute_f1_score(y_test, y_test_prob)
+print(f"F1 score: {f1score}")
+
+y_val_prob = best_model.predict(x_val)
+f1score_val = compute_f1_score(y_val, y_val_prob)
+print(f"F1 score: {f1score_val}")
+
+def data_percentage(y):
+    
+    m=len(y)
+    n_positive = np.sum(y)
+    n_negative = m - n_positive
+    
+    pos_prec = (n_positive* 100.0)/ m
+    neg_prec = (n_negative* 100.0)/ m
+    
+    print(f"Number of examples: {m}")
+    print(f"Percentage of positive examples: {pos_prec}%, number of pos examples: {n_positive}") 
+    print(f"Percentage of negative examples: {neg_prec}%, number of neg examples: {n_negative}") 
+
+# the whole data
+data_percentage(y)
+
+print("Training Data:")
+data_percentage(y_train)
+print("Validation Data:")
+data_percentage(y_val)
+print("Testing Data:")
+data_percentage(y_test)

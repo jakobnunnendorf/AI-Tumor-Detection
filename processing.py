@@ -254,7 +254,7 @@ def trainingHistory(history):
 trainingHistory(history) 
 
 
-best_model = load_model(filepath='models/cnn-parameters-improvement-26-0.76.keras')
+best_model = load_model(filepath='models/cnn-parameters-improvement-09-0.84.keras')
 best_model.metrics_names
 loss, acc = best_model.evaluate(x=x_test, y=y_test)
 

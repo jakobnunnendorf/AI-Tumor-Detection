@@ -9,6 +9,7 @@ from crop import *
 from load_data import *
 from plot_sample_images import *
 from split_data import *
+from training_overview import *
 
 width, height = (240, 240)
 
@@ -18,15 +19,7 @@ x, y = load_data(['yes', 'no'], (width, height))
 
 x_train, y_train, x_val, y_val, x_test, y_test = split_data(x, y, test_size=0.3)
 
-print ("number of training examples = " + str(x_train.shape[0]))
-print ("number of development examples = " + str(x_val.shape[0]))
-print ("number of test examples = " + str(x_test.shape[0]))
-print ("x_train shape: " + str(x_train.shape))
-print ("Y_train shape: " + str(y_train.shape))
-print ("x_val (dev) shape: " + str(x_val.shape))
-print ("Y_val (dev) shape: " + str(y_val.shape))
-print ("x_test shape: " + str(x_test.shape))
-print ("Y_test shape: " + str(y_test.shape))
+print_training_overview(x_train, x_val, y_train, y_val, x_test, y_test)
 
 # Nicely formatted time string
 def format_elapsed_time(seconds):

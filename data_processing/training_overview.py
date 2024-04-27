@@ -1,0 +1,10 @@
+def print_training_overview(x_train, x_val, y_train, y_val, x_test, y_test):
+    print ("number of training examples = " + str(x_train.shape[0]))
+    print ("number of development examples = " + str(x_val.shape[0]))
+    print ("number of test examples = " + str(x_test.shape[0]))
+    print ("x_train shape: " + str(x_train.shape))
+    print ("Y_train shape: " + str(y_train.shape))
+    print ("x_val (dev) shape: " + str(x_val.shape))
+    print ("Y_val (dev) shape: " + str(y_val.shape))
+    print ("x_test shape: " + str(x_test.shape))
+    print ("Y_test shape: " + str(y_test.shape))

@@ -1,7 +1,6 @@
 from tensorflow.keras.layers import Dense, Input, Conv2D, Dropout, ZeroPadding2D, MaxPooling2D, BatchNormalization, Activation, Flatten
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,21 +8,13 @@ import time
 from crop import *
 from load_data import *
 from plot_sample_images import *
+from split_data import *
 
 width, height = (240, 240)
 
-
 x, y = load_data(['yes', 'no'], (width, height))
 
-
-plot_sample_images(x, y)
-
-def split_data(features, targets, test_size=0.2):
-    train_features, val_features, train_targets, val_targets = \
-        train_test_split(features, targets, test_size=test_size)
-    test_features, val_features, test_targets, val_targets = \
-        train_test_split(val_features, val_targets, test_size=0.5)
-    return train_features, train_targets, val_features, val_targets, test_features, test_targets
+# plot_sample_images(x, y)
 
 x_train, y_train, x_val, y_val, x_test, y_test = split_data(x, y, test_size=0.3)
 
@@ -105,8 +96,8 @@ filepath = "models/cnn-parameters-improvement-{epoch:02d}-{val_accuracy:.2f}.ker
 checkpoint = ModelCheckpoint(filepath, monitor='val_accuracy', verbose=1, save_best_only=True, mode='max')
 
 start_time = time.time()
-
-model.fit(x=x_train, y=y_train, batch_size=32, epochs=10, validation_data=(x_val, y_val), callbacks=[tensorboard, checkpoint])
+# changed epochs from 10 to 2 to speed up refactoring
+model.fit(x=x_train, y=y_train, batch_size=32, epochs=2, validation_data=(x_val, y_val), callbacks=[tensorboard, checkpoint])
 
 end_time = time.time()
 execution_time = (end_time - start_time)

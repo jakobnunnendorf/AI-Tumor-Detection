@@ -1,8 +1,10 @@
 from tensorflow.keras.layers import Dense, Input, Conv2D, Dropout, ZeroPadding2D, MaxPooling2D, BatchNormalization, Activation, Flatten
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
+from tensorflow.keras.regularizers import l2
+from tensorflow.keras.optimizers import Adam
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score,classification_report, roc_auc_score,roc_curve
 from sklearn.utils import shuffle
 import cv2
 import imutils
@@ -12,18 +14,18 @@ import time
 from os import listdir
 
 width, height = (240, 240)
-def crop(image, plot=False):
+def crop(image):
     # Convert to grayscale and blur
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
     # Threshold image then clean up
-    thresh = cv2.threshold(gray, 45, 255, cv2.THRESH_BINARY)[1]
-    thresh = cv2.erode(thresh, None, iterations=2)
-    thresh = cv2.dilate(thresh, None, iterations=2)
+    threshold = cv2.threshold(gray, 45, 255, cv2.THRESH_BINARY)[1]
+    threshold = cv2.erode(threshold, None, iterations=2)
+    threshold = cv2.dilate(threshold, None, iterations=2)
 
     # Find contours, get largest one
-    contours = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = cv2.findContours(threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     contours = imutils.grab_contours(contours)
     contour = max(contours, key=cv2.contourArea)
 
@@ -43,25 +45,22 @@ def load_data(directories, image_size):
  
     # load all images in a directory
         
-    x = [] # (image, width, height, channel) 
-    y = [] # (image, 1)
+    x = [] # (image, width, height, directory) 
+    y = [] # (image, 1) (cancerous)
     image_width, image_height = image_size
     
     for directory in directories:
-        print(directory)
         for filename in listdir(directory):
-            # load image
+            # load images
             path = directory + '/' + filename
             image = cv2.imread(path)
-            image = crop(image, plot=False)
+            image = crop(image)
             image = cv2.resize(image, dsize=(image_width, image_height), interpolation=cv2.INTER_CUBIC)
             # normalize
             image = image / 255.
-            # convert image to numpy array and append it to x
             x.append(image)
-            # append a value of 1 to the target array if the image
-            # is in the folder named 'yes', otherwise append 0.
-            if directory[-3:] == 'yes':
+            # append a value of 1 if image in "yes" 
+            if 'yes' in directory:
                 y.append([1])
 
             else:
@@ -71,12 +70,13 @@ def load_data(directories, image_size):
     x = np.array(x)
     y = np.array(y)
     
-    # Shuffle the data
+    # randomize order
     x, y = shuffle(x, y)
     
+    # samples and shape
     print(f'Number of examples is: {len(x)}')
-    print(f'x shape is: {x.shape}')
-    print(f'y shape is: {y.shape}')
+    print(f'shape of x is: {x.shape}')
+    print(f'shape of y is: {y.shape}')
     
     return x, y
 
@@ -114,12 +114,12 @@ def plot_sample_images(x, y, n=50):
 
 plot_sample_images(x, y)
 
-def split_data(features, targets, test_size=0.2):
-    train_features, val_features, train_targets, val_targets = \
-        train_test_split(features, targets, test_size=test_size)
-    test_features, val_features, test_targets, val_targets = \
-        train_test_split(val_features, val_targets, test_size=0.5)
-    return train_features, train_targets, val_features, val_targets, test_features, test_targets
+def split_data(x, y, test_size=0.2):
+    #Split data to training, validation, and test sets
+    train_x, val_x, train_y, val_y = train_test_split(x, y, test_size=test_size)
+    test_x, val_x, test_y, val_y = train_test_split(val_x, val_y, test_size=0.5)
+    return train_x, train_y, val_x, val_y, test_x, test_y
+
 
 x_train, y_train, x_val, y_val, x_test, y_test = split_data(x, y, test_size=0.3)
 
@@ -133,7 +133,7 @@ print ("Y_val (dev) shape: " + str(y_val.shape))
 print ("x_test shape: " + str(x_test.shape))
 print ("Y_test shape: " + str(y_test.shape))
 
-# Nicely formatted time string
+# format time string
 def format_elapsed_time(seconds):
     hours, seconds = divmod(seconds, 3600)
     minutes, seconds = divmod(seconds, 60)
@@ -147,42 +147,36 @@ def compute_f1_score(y_true, prob):
     return score
 
 def build_model(input_shape):
-    # Define the input placeholder as a tensor with shape input_shape.
-    x_input = Input(input_shape)  # shape=(None, 240, 240, 3)
+    inputs = Input(shape=input_shape)
     
-    # Zero-Padding: pads the border of x_input with zeroes
-    x = ZeroPadding2D((3, 3))(x_input)  # shape=(None, 246, 246, 3)
+    # First block
+    x = Conv2D(32, (3, 3), padding='same', kernel_regularizer=l2(0.01))(inputs)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = Conv2D(32, (3, 3), padding='same', kernel_regularizer=l2(0.01))(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
+    x = MaxPooling2D((2, 2))(x)
+    x = Dropout(0.3)(x)
+
+    # Second block
+    y = Conv2D(64, (3, 3), padding='same', kernel_regularizer=l2(0.01))(x)
+    y = BatchNormalization()(y)
+    y = Activation('relu')(y)
+    y = Conv2D(64, (3, 3), padding='same', kernel_regularizer=l2(0.01))(y)
+    y = BatchNormalization()(y)
+    y = Activation('relu')(y)
+    y = MaxPooling2D((2, 2))(y)
+    y = Dropout(0.3)(y)
+
+    # Flatten and dense layers
+    z = Flatten()(y)
+    z = Dense(256, activation='relu', kernel_regularizer=l2(0.01))(z)
+    z = Dropout(0.5)(z)
+    outputs = Dense(1, activation='sigmoid')(z)
     
-    # First CONV -> BN -> RELU Layer
-    x = Conv2D(32, (7, 7), strides=(1, 1), name='conv0')(x)
-    x = BatchNormalization(axis=3, name='bn0')(x)
-    x = Activation('relu')(x)  # shape=(None, 240, 240, 32)
-    x = MaxPooling2D((4, 4), name='max_pool0')(x)  # shape=(None, 60, 60, 32)
-    
-    # Second CONV -> BN -> RELU Layer
-    x = Conv2D(64, (5, 5), strides=(1, 1), name='conv1')(x)
-    x = BatchNormalization(axis=3, name='bn1')(x)
-    x = Activation('relu')(x)  # shape=(None, 56, 56, 64)
-    x = MaxPooling2D((2, 2), name='max_pool1')(x)  # shape=(None, 28, 28, 64)
-
-    # Third CONV -> BN -> RELU Layer
-    x = Conv2D(128, (3, 3), strides=(1, 1), name='conv2')(x)
-    x = BatchNormalization(axis=3, name='bn2')(x)
-    x = Activation('relu')(x)  # shape=(None, 26, 26, 128)
-    x = MaxPooling2D((2, 2), name='max_pool2')(x)  # shape=(None, 13, 13, 128)
-
-    # Flatten the data to a 1-D vector
-    x = Flatten()(x)  # shape=(None, 21632)
-
-    # Add a fully connected layer
-    x = Dense(256, activation='relu', name='fc1')(x)
-    x = Dropout(0.5)(x)  # Dropout added for regularization
-
-    # Final fully connected layer with sigmoid activation for binary classification
-    x = Dense(1, activation='sigmoid', name='fc2')(x)  # shape=(None, 1)
-    
-    # Create the Keras model instance
-    model = Model(inputs=x_input, outputs=x, name='BrainDetectionModel')
+    model = Model(inputs=inputs, outputs=outputs, name="CancerDetection")
+    model.compile(optimizer=Adam(learning_rate=0.001), loss='binary_crossentropy', metrics=['accuracy'])
     
     return model
 
@@ -191,18 +185,18 @@ model = build_model(shape)
 model.summary()
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 # tensorboard
-log_file_name = f'brain_tumor_detection_cnn_{int(time.time())}'
-tensorboard = TensorBoard(log_dir=f'logs/{log_file_name}')
+log_file = f'brain_tumor_detection_cnn_{int(time.time())}'
+tensorboard = TensorBoard(log_dir=f'logs/{log_file}')
 # checkpoint
-# unique file name that will include the epoch and the validation (development) accuracy
-filepath = "models/cnn-parameters-improvement-{epoch:02d}-{val_accuracy:.2f}.keras"
+# file name that includes the epoch and the validation accuracy
+filepath = "models/cnn-parameters-{epoch:02d}-{val_accuracy:.2f}.keras"
 
-# save the model with the best validation (development) accuracy till now
+# save the model with the best validation  accuracy till now
 checkpoint = ModelCheckpoint(filepath, monitor='val_accuracy', verbose=1, save_best_only=True, mode='max')
 
 start_time = time.time()
 
-model.fit(x=x_train, y=y_train, batch_size=32, epochs=10, validation_data=(x_val, y_val), callbacks=[tensorboard, checkpoint])
+model.fit(x=x_train, y=y_train, batch_size=32, epochs=50, validation_data=(x_val, y_val), callbacks=[tensorboard, checkpoint])
 
 end_time = time.time()
 execution_time = (end_time - start_time)
@@ -212,32 +206,28 @@ history = model.history.history
 
 
 def trainingHistory(history):
-    
-    train_loss = history['loss']
-    val_loss = history['val_loss']
-    train_acc = history['accuracy']
-    val_acc = history['val_accuracy']
-    
-    # Loss
-    plt.figure()
-    plt.plot(train_loss, label='Training Loss')
-    plt.plot(val_loss, label='Validation Loss')
-    plt.title('Loss')
+    """Plot the training history"""
+
+    # Training and validation loss
+    plt.plot(history["loss"], label="Training loss")
+    plt.plot(history["val_loss"], label="Validation loss")
+    plt.title("Loss")
     plt.legend()
-    plt.show()
-    
-    # Accuracy
+
+    # Training and validation accuracy
     plt.figure()
-    plt.plot(train_acc, label='Training Accuracy')
-    plt.plot(val_acc, label='Validation Accuracy')
-    plt.title('Accuracy')
+    plt.plot(history["accuracy"], label="Training accuracy")
+    plt.plot(history["val_accuracy"], label="Validation accuracy")
+    plt.title("Accuracy")
     plt.legend()
+
     plt.show()
+
 
 trainingHistory(history) 
 
 
-best_model = load_model(filepath='models/cnn-parameters-improvement-09-0.84.keras')
+best_model = load_model(filepath='models/cnn-parameters-40-0.79.keras')
 best_model.metrics_names
 loss, acc = best_model.evaluate(x=x_test, y=y_test)
 
@@ -252,18 +242,35 @@ y_val_prob = best_model.predict(x_val)
 f1score_val = compute_f1_score(y_val, y_val_prob)
 print(f"F1 score: {f1score_val}")
 
+def evaluate_model(model, X_test, y_test):
+    y_pred = model.predict(X_test).ravel()
+    y_pred_class = (y_pred > 0.5).astype(int)
+    print(classification_report(y_test, y_pred_class))
+
+    if len(np.unique(y_test)) > 1:
+        auc = roc_auc_score(y_test, y_pred)
+        fpr, tpr, _ = roc_curve(y_test, y_pred)
+        plt.plot(fpr, tpr, label=f'ROC curve (AUC = {auc:.2f})')
+        plt.plot([0, 1], [0, 1], 'k--')
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('ROC Curve')
+        plt.legend(loc='lower right')
+        plt.show()
+
+evaluate_model(model, x_test, y_test)
+
 def data_percentage(y):
-    
-    m=len(y)
-    n_positive = np.sum(y)
-    n_negative = m - n_positive
-    
-    pos_prec = (n_positive* 100.0)/ m
-    neg_prec = (n_negative* 100.0)/ m
-    
-    print(f"Number of examples: {m}")
-    print(f"Percentage of positive examples: {pos_prec}%, number of pos examples: {n_positive}") 
-    print(f"Percentage of negative examples: {neg_prec}%, number of neg examples: {n_negative}") 
+    total_count = len(y)
+    positive_count = np.sum(y)
+
+    positive_percentage = 100 * positive_count / total_count
+    negative_percentage = 100 * (total_count - positive_count) / total_count
+
+    print(f"Number of examples: {total_count}")
+    print(f"Percentage of positive examples: {positive_percentage:.2f}%")
+    print(f"Percentage of negative examples: {negative_percentage:.2f}%")
+
 
 # the whole data
 data_percentage(y)
